@@ -627,7 +627,9 @@ def _update_datadicts(rdata, tsetdata, tsetdatadir, tsetdataprefix,
     """
     Update database with output from run_ConstructMC_fullarray
     Version 20160801: Split data dicts
+    Returns number of updated entries.
     """
+    nupdate = 0
     rhomodesfx = mt._get_rhomodesfx(rhomode)
     rdict, tdict = _get_rhotsetdicts_20160801(tsetdatadir, tsetdataprefix,
                 chrfullname, region, res, dataset, free=False,
@@ -645,6 +647,7 @@ def _update_datadicts(rdata, tsetdata, tsetdatadir, tsetdataprefix,
             # Update
             rdict[key] = rdata[key]
             tdict[key] = tsetdata[key]
+            nupdate += 1
     # Write to file
     resname = str(res / 1000) + 'kb'
     dirname = os.path.join(tsetdatadir, tsetdataprefix,
@@ -652,7 +655,7 @@ def _update_datadicts(rdata, tsetdata, tsetdatadir, tsetdataprefix,
     rfname = os.path.join(dirname, dataset + '-rhodict' + rhomodesfx + '.p')
     tfname = os.path.join(dirname, dataset + '-tsetdict' + rhomodesfx + '.p')
     hfio._pickle_securedumps((rfname, tfname), (rdict, tdict), freed=False)
-    return
+    return nupdate
 
 
 ################################################
@@ -908,6 +911,25 @@ class DataFileReader:
                         self.genomedatadir, self.baseres)
         return [[0, chrlen * self.baseres]]
 
+    def _set_dummyarrays(self, cname, beta):
+        """
+        Set array files in directory to tiny dummy values. Saves disk space
+        when we want to ignore high beta values that don't meet the
+        selection criterion.
+        """
+        thispar = copy.deepcopy(self.basepars)
+        thispar['cname'] = cname
+        thispar['beta'] = beta
+        binary_dir = _get_runbinarydir(thispar)
+        fmatfname = os.path.join(binary_dir, 'fmat-' + self.norm + '.dat')
+        mmatfname = os.path.join(binary_dir, 'mmat-' + self.norm + '.dat')
+        cmatfname = os.path.join(binary_dir, 'cmat-' + self.norm + '.dat')
+        mapfname = os.path.join(binary_dir, 'mapping-' + self.norm + '.dat')
+        np.array([0.0]).tofile(fmatfname)
+        np.array([0.0]).tofile(mmatfname)
+        np.array([0.0]).tofile(cmatfname)
+        hfio._pickle_securedump(mapfname, (np.array([0]), 1), freed=True)
+
     def get_fmat(self, cname, beta):
         """
         Retrieve single-chr interaction matrix fmat, either by reading from
@@ -921,6 +943,10 @@ class DataFileReader:
         thispar['cname'] = cname
         thispar['beta'] = 1.0
         binary_dir_beta1 = _get_runbinarydir(thispar)
+        if not os.path.isdir(binary_dir):
+            os.makedirs(binary_dir)
+        if not os.path.isdir(binary_dir_beta1):
+            os.makedirs(binary_dir_beta1)
         # Test if binary file exists
         fmatfname = os.path.join(binary_dir, 'fmat-' + self.norm + '.dat')
         fmatbeta1fname = os.path.join(binary_dir_beta1, 'fmat-' +
@@ -930,12 +956,13 @@ class DataFileReader:
             fmat = np.fromfile(fmatfname, 'float64')
             n = int(np.sqrt(len(fmat)))
             fmat.shape = n, n
-        elif os.path.isfile(fmatfname):
+        elif os.path.isfile(fmatbeta1fname):
             ## If beta=1.0 data exists, read binary file then exponentiate
             fmat = np.fromfile(fmatbeta1fname, 'float64')
             n = int(np.sqrt(len(fmat)))
             fmat.shape = n, n
             fmat = fmat ** beta
+            fmat.tofile(fmatfname)
             md = self.get_mappingdata(cname, 1.0)
             mapfname = os.path.join(binary_dir,
                         'mapping-' + self.norm + '.dat')
@@ -953,14 +980,20 @@ class DataFileReader:
                     self.genomeref, self.genomedatadir, hicfile,
                     self.baseres, baseresname, self.res, regionselection,
                     nloop=self.nloop, norm=self.norm, minrowsum=self.minrowsum)
-            fmat = fmat ** beta
-            if not os.path.isdir(binary_dir):
-                os.makedirs(binary_dir)
-            fmat.tofile(fmatfname)
-            mapfname = os.path.join(binary_dir,
+            # Dump beta = 1.0 file first
+            fmat.tofile(fmatbeta1fname)
+            mapfname = os.path.join(binary_dir_beta1,
                         'mapping-' + self.norm + '.dat')
             hfio._pickle_securedump(mapfname, mappingdata,
                         freed=True)
+            # If beta is not 1.0, dump exponentiated version
+            if beta != 1.0:
+                fmat = fmat ** beta
+                fmat.tofile(fmatfname)
+                mapfname = os.path.join(binary_dir,
+                            'mapping-' + self.norm + '.dat')
+                hfio._pickle_securedump(mapfname, mappingdata,
+                            freed=True)
         return fmat
 
     def get_mappingdata(self, cname, beta):
@@ -976,10 +1009,7 @@ class DataFileReader:
         mapfname = os.path.join(binary_dir,
                     'mapping-' + self.norm + '.dat')
         if not os.path.isfile(mapfname):
-            if forcecalc:
-                self.get_fmat(cname, beta)
-            else:
-                return None
+            self.get_fmat(cname, beta)
         return hfio._pickle_secureread(mapfname, free=True)
 
 
@@ -1139,7 +1169,7 @@ class DataFileReader:
         """
         thispar = copy.deepcopy(self.basepars)
         dataset = _get_tsetdataset2(thispar)
-        _update_datadicts(inrho, intset,
+        return _update_datadicts(inrho, intset,
                 self.tsetdatadir, self.tsetdataprefix, cname,
                 self.region, self.res, dataset, rhomode=self.rhomode)
 
@@ -1184,7 +1214,7 @@ if __name__ == '__main__':
     res = 50000
     cname = 'chr22'
     cname2 = 'chr21'
-    beta = 4.0
+    beta = 1.0
     pars = {
             #'rawdatadir': '/home/tanzw/data/hicdata/ProcessedData/',
             #'genomedatadir': '/home/tanzw/data/genomedata/',
@@ -1254,6 +1284,10 @@ if __name__ == '__main__':
     _ = x[0].set_title('$\log_{10}(f_{ij})$')
     _ = x[1].set_title('$\log_{10}(m_{ij})$')
     _ = x[2].set_title('$c_{ij}$')
+    _ = raw_input('Cytoband data and f/m/cmat arrays. ' +
+                    'Enter anything to continue:')
+    plt.close('all')
+    print
     f, x = plt.subplots(1, 1, figsize=(8, 3))
     _ = x.plot(qAi.T)
     _ = x.set_title('Trial $q_\\alpha(i)$')
@@ -1267,6 +1301,7 @@ if __name__ == '__main__':
     print
     print
     _ = raw_input('Enter anything to exit:')
+    plt.close('all')
     print 'Farewell!'
     print
 

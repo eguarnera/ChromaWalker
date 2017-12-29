@@ -1,0 +1,4 @@
+H3K4Me3_1	UW GM12878	SignalAnalysis/Histone/wgEncodeUwHistoneGm12878H3k4me3StdRawRep1.bigWig
+H3K4Me3_2	UW GM12878	SignalAnalysis/Histone/wgEncodeUwHistoneGm12878H3k4me3StdRawRep2.bigWig
+Control	UW GM12878	SignalAnalysis/Histone/wgEncodeUwHistoneGm12878InputStdRawRep1.bigWig
+

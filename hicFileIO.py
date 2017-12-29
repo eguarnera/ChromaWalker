@@ -16,6 +16,16 @@ import cPickle as pickle
 ## Basic file I/O handling
 
 
+def _pickle_secureunlock(fname):
+    """
+    Release lock on a file where free=False upon reading just now,
+    requiring no changes.
+    """
+    fname2 = fname + '-lock'
+    if os.path.isfile(fname2):
+        os.remove(fname2)
+
+
 def _pickle_secureread(fname, free=False):
     """
     Read a pickled data structure securely (ensure only 1 thread reading it).
@@ -80,7 +90,8 @@ def _pickle_securedump(fname, data, freed=False):
             print 'Waiting for file lock to free up...'
             sleep(1)
     pickle.dump(data, open(fname, 'wb'))
-    os.remove(fname2)
+    if os.path.isfile(fname2):
+        os.remove(fname2)
     return
 
 
@@ -103,5 +114,6 @@ def _pickle_securedumps(fnames, datas, freed=False):
             sleep(1)
     for fn, dt in zip(fnames, datas):
         pickle.dump(dt, open(fn, 'wb'))
-    os.remove(fname2)
+    if os.path.isfile(fname2):
+        os.remove(fname2)
     return

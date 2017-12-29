@@ -109,7 +109,7 @@ def _stepping_gammamax(targetset, cmat, bestrho, besttset, gammamaxmap,
         if _Metropolis_decision(thisrho, trialrho, kT):
             targetset = copy.deepcopy(trialset)
             if trialrho < bestrho:
-                print 'Gamma move', j, 'good'
+                #print 'Gamma move', j, 'good'
                 bestrho = trialrho
                 besttset = copy.deepcopy(trialset)
     return targetset, bestrho, besttset
@@ -128,7 +128,7 @@ def _stepping_random(targetset, cmat, bestrho, besttset,
         if _Metropolis_decision(thisrho, trialrho, kT):
             targetset = copy.deepcopy(trialset)
             if trialrho < bestrho:
-                print 'Random move', j, 'good'
+                #print 'Random move', j, 'good'
                 bestrho = trialrho
                 besttset = copy.deepcopy(trialset)
     return targetset, bestrho, besttset
@@ -439,11 +439,13 @@ def run_PertSnap_fullarray(pars, pertpars, meansize=1.333, initmode=False,
                     tset = testtset.copy()
                     bestrho = testrho
         en = time()
-        print (': %.3e secs' % (en - st))
+        print (': %.3e secs' % (en - st)),
         if moved:
-            print 'Key', key, 'moved!', rho12
+            print 'moved! %.3e' % bestrho
             newtsetdict[key] = tset
             newrhodict[key] = bestrho
+        else:
+            print
     return newrhodict, newtsetdict
 
 
@@ -470,7 +472,7 @@ def _combine_rhotsetdicts(r1, t1, r2, t2):
 # Automatically finding optimal levels
 
 
-def _find_optimalLevels(rholist, ntargetlist, mappedchrlen, rhomax=0.8,
+def _find_goodLevels(rholist, ntargetlist, mappedchrlen, rhomax=0.8,
                 skipfirst=None):
     """
     Define optimal levels of structural hierarchy (minima in rho) below rhomax.
@@ -490,6 +492,31 @@ def _find_optimalLevels(rholist, ntargetlist, mappedchrlen, rhomax=0.8,
     ntmin = ntarr[1:-1][minmask]
     if skipfirst:
         ntmin = ntmin[1:]
+    return np.array(ntmin)
+
+
+def _find_optimalLevels(rholist, ntargetlist, mappedchrlen, rhomax=0.8,
+                skipfirst=None):
+    """
+    Define optimal levels of structural hierarchy (minima in rho) below rhomax.
+    Returns list of ntarget values.
+    If skipfirst is True, skip first minimum after ntarget = 2.
+    If None, set skipfirst to True if mappedchrlen > 200Mbp.
+    """
+    #if skipfirst is None:
+        #skipfirst = (mappedchrlen > 2e8)
+    #rhoarr = np.array(rholist)
+    #ntarr = np.array(ntargetlist)
+    ## Find minima: Ignore first and last ntarget values
+    #nextgreater = rhoarr[1:] > rhoarr[:-1]
+    #prevgreater = rhoarr[:-1] > rhoarr[1:]
+    #minmask = np.array(nextgreater[1:] * prevgreater[:-1], dtype=bool)
+    #minmask = np.array(minmask * (rhoarr[1:-1] < rhomax), dtype=bool)
+    #ntmin = ntarr[1:-1][minmask]
+    #if skipfirst:
+        #ntmin = ntmin[1:]
+    ntmin = _find_goodLevels(rholist, ntargetlist, mappedchrlen, rhomax=rhomax,
+                skipfirst=skipfirst)
     # Set ntmin[i+1] > 2*ntmin[i]
     ntmin = list(ntmin)
     print ntmin
@@ -946,7 +973,7 @@ class TargetOptimizer:
         thispar['beta'] = beta
         rd, td = run_ConstructMC_fullarray(thispar, self.steppars,
                             meansize=self.meansize, rhomode=self.rhomode)
-        self.DFR.update_datadicts(cname, rd, td)
+        return self.DFR.update_datadicts(cname, rd, td)
 
     def pSnap(self, cname, beta):
         """
@@ -957,7 +984,7 @@ class TargetOptimizer:
         thispar['beta'] = beta
         rd, td = run_PertSnap_fullarray(thispar, self.pertpars,
                             meansize=self.meansize, rhomode='frac')
-        self.DFR.update_datadicts(cname, rd, td)
+        return self.DFR.update_datadicts(cname, rd, td)
 
     def get_partitions(self, cname, beta, ntarget):
         """
@@ -982,16 +1009,11 @@ class TargetOptimizer:
         lims, ids = mt._get_limsIds_fromPaddedSplitMembership(membership)
         return membership, lims, ids
 
-    def get_optimalLevels(self, cname, beta, ntargetmax=None):
+    def _get_rholist(self, cname, beta, ntargetmax=None):
         """
-        Get all optimal levels of hierarchy in a given chromosome, with
-        thermal annealing beta, with metastability index below rhomax.
-        Returns list of ntarget values.
-
-        If skipfirst is True, skip first minimum after ntarget = 2.
-        If None, set skipfirst to True if mappedchrlen > 200Mbp.
+        Get list of ntarget / rho with data available.
         """
-        # Get list of ntarget and rho
+        rd, td = self.DFR.get_datadicts(cname)
         ntlist = []
         rlist = []
         if ntargetmax is None:
@@ -1010,6 +1032,37 @@ class TargetOptimizer:
                 if data is not None:
                     ntlist.append(n)
                     rlist.append(data[0])
+        return rlist, ntlist
+
+    def get_goodLevels(self, cname, beta, ntargetmax=None):
+        """
+        Get all optimal levels of hierarchy in a given chromosome, with
+        thermal annealing beta, with metastability index below rhomax.
+        Returns list of ntarget values.
+
+        If skipfirst is True, skip first minimum after ntarget = 2.
+        If None, set skipfirst to True if mappedchrlen > 200Mbp.
+        """
+        # Get list of ntarget and rho
+        rlist, ntlist = self._get_rholist(cname, beta, ntargetmax=ntargetmax)
+        # Find mapped length along chromosome
+        mappingdata = self.DFR.get_mappingdata(cname, beta)
+        mappedchrlen = len(mappingdata[0]) * self.res
+        # Calculate optimal levels
+        return _find_goodLevels(rlist, ntlist, mappedchrlen,
+                rhomax=self.rhomax, skipfirst=self.skipfirst)
+
+    def get_optimalLevels(self, cname, beta, ntargetmax=None):
+        """
+        Get all optimal levels of hierarchy in a given chromosome, with
+        thermal annealing beta, with metastability index below rhomax.
+        Returns list of ntarget values.
+
+        If skipfirst is True, skip first minimum after ntarget = 2.
+        If None, set skipfirst to True if mappedchrlen > 200Mbp.
+        """
+        # Get list of ntarget and rho
+        rlist, ntlist = self._get_rholist(cname, beta, ntargetmax=ntargetmax)
         # Find mapped length along chromosome
         mappingdata = self.DFR.get_mappingdata(cname, beta)
         mappedchrlen = len(mappingdata[0]) * self.res
@@ -1101,7 +1154,8 @@ class TargetOptimizer:
         lab -= np.diag(np.diag(lab))
         return lab
 
-    def get_binLaplacian_inter(self, cname1, cname2, beta, ntarget1, ntarget2):
+    def get_binLaplacian_inter(self, cname1, cname2, beta1, beta2,
+                    ntarget1, ntarget2):
         """
         Compute Laplacian obtained by binning operation on hard partitions,
         across 2 chromosomes.
@@ -1110,11 +1164,11 @@ class TargetOptimizer:
         # Get chr1 membership
         # Get tset
         rd, td = self.DFR.get_datadicts(cname1)
-        _, tset = self.DFR.readout_datadicts(rd, td, beta, ntarget1)
+        _, tset = self.DFR.readout_datadicts(rd, td, beta1, ntarget1)
         # Get hard, split and padded membership functions
         thispar = copy.deepcopy(self.basepars)
         thispar['cname'] = cname1
-        thispar['tsetbeta'] = beta
+        thispar['tsetbeta'] = beta1
         cutoffsize = thispar['minpartsize'] / thispar['res']
         membership1 = mt._get_mappedPaddedMembership(thispar, tset,
                 norm=thispar['norm'], merge=True, cutoffsize=cutoffsize,
@@ -1123,11 +1177,11 @@ class TargetOptimizer:
         # Get chr2 membership
         # Get tset
         rd, td = self.DFR.get_datadicts(cname2)
-        _, tset = self.DFR.readout_datadicts(rd, td, beta, ntarget2)
+        _, tset = self.DFR.readout_datadicts(rd, td, beta2, ntarget2)
         # Get hard, split and padded membership functions
         thispar = copy.deepcopy(self.basepars)
         thispar['cname'] = cname2
-        thispar['tsetbeta'] = beta
+        thispar['tsetbeta'] = beta2
         cutoffsize = thispar['minpartsize'] / thispar['res']
         membership2 = mt._get_mappedPaddedMembership(thispar, tset,
                 norm=thispar['norm'], merge=True, cutoffsize=cutoffsize,
@@ -1215,7 +1269,7 @@ if __name__ == '__main__':
     TOpt.pSnap(cname, beta)
     TOpt.pSnap(cname2, beta)
     ######################################
-    # Display results...
+    # Display optimization results...
     print
     print '**********************************************'
     print
@@ -1240,6 +1294,8 @@ if __name__ == '__main__':
     _ = x.set_title('%s metastability index trace $\\rho_n$' % cname)
     _ = raw_input('Enter anything to continue:')
     plt.close('all')
+    ######################################
+    # Partition hierarchy...
     f, x = plt.subplots(1, 1, figsize=(6, 10))
     TOpt.plot_partitionHierarchy_all(x, cname, beta)
     x.set_title('%s: All levels' % cname)
@@ -1256,6 +1312,8 @@ if __name__ == '__main__':
     x.set_title('%s: Optimal levels' % cname2)
     _ = raw_input('Enter anything to continue:')
     plt.close('all')
+    ######################################
+    # Effective interactions...
     lab = TOpt.get_binLaplacian(cname, beta, 4)
     f, x = plt.subplots()
     x.matshow(lab)

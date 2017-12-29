@@ -1,0 +1,2 @@
+CTCF_1	UW	SignalAnalysis/TFBS-Signal/wgEncodeUwTfbsGm12878CtcfStdRawRep1.bigWig
+CTCF_2	UW	SignalAnalysis/TFBS-Signal/wgEncodeUwTfbsGm12878CtcfStdRawRep2.bigWig
