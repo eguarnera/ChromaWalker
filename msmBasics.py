@@ -131,6 +131,8 @@ def _calc_MFPT_20160831(fmat, mapping):
         goodinds = list(set(range(len(mmat))) - set(badloci))
         goodinds.sort()
         goodinds = np.array(goodinds)
+        if len(goodinds) == 0:
+            return None
         fmat = fmat[goodinds][:, goodinds]
         mmat = mmat[goodinds][:, goodinds]
     return fmat, mmat, mapping

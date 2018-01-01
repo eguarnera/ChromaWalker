@@ -1012,7 +1012,6 @@ class DataFileReader:
             self.get_fmat(cname, beta)
         return hfio._pickle_secureread(mapfname, free=True)
 
-
     def get_mmat(self, cname, beta):
         """
         Retrieve MFPT matrix, either by reading from
@@ -1041,7 +1040,14 @@ class DataFileReader:
             ###       beta-induced disconnected pieces.
             fmat = self.get_fmat(cname, beta)
             mappingdata = self.get_mappingdata(cname, beta)
-            fmat2, mmat, mapping = mb._calc_MFPT_20160831(fmat, mappingdata[0])
+            # Check if mmat computation returns something sensible
+            retval = mb._calc_MFPT_20160831(fmat, mappingdata[0])
+            if retval is None:
+                fmat2 = np.array([0])
+                mmat = np.array([0])
+                mapping = np.array([0])
+            else:
+                fmat2, mmat, mapping = retval
             if len(fmat2) < len(fmat):
                 #### Rows were trimmed out: update fmat, mappingdata
                 fmatfname = os.path.join(binary_dir, 'fmat-' +

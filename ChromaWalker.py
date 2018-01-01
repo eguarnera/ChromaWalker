@@ -221,6 +221,7 @@ class ChromaWalker:
             # Test all other beta, starting from highest
             blist = np.sort(self.betalist)[::-1]
             for beta in blist:
+                print 'Testing beta = %i...' % beta
                 thissize = len(self.DFR.get_mmat(cname, beta))
                 if thissize >= (1.0 - maxdisconnected) * fullsize:
                     # This beta is good
@@ -243,6 +244,7 @@ class ChromaWalker:
         # Run each chromosome in serial mode
         print 'Running intra-chromosomal interaction maps...'
         for cname in self.cnamelist:
+            print 'Processing Chromosome %s...' % cname
             bestbeta = self._get_bestBeta(cname)
             print 'Chromosome %s best beta: %i' % (cname, bestbeta)
             _ = self.DFR.get_cmat(cname, bestbeta)
@@ -385,13 +387,13 @@ class ChromaWalker:
         resname = str(self.res / 1000) + 'kb'
         rhomodesfx = mt._get_rhomodesfx(self.rhomode)
         dirname = os.path.join(self.rundir, self.tsetdatadir,
-                self.tsetdataprefix, cname, self.region, resname)
+                self.tsetdataprefix, self.cnamelist[-1], self.region, resname)
         dataset = dfr._get_tsetdataset2(thispar)
         rdatafname = os.path.join(dirname, dataset + '-rhodict' +
                         rhomodesfx + '.p')
         ## Check if the datadict exists
         if not os.path.isfile(rdatafname):
-            print ('No corresponding datadicts present:',
+            print ('No corresponding datadicts present:' +
                     'Please run tsetOptimizerLoop or autoTsetOptimization!')
             return None
         if os.path.isfile(mapfname):
@@ -426,7 +428,7 @@ class ChromaWalker:
                         rhomodesfx + '.p')
         ## Check if the datadict exists
         if not os.path.isfile(rdatafname):
-            print ('No corresponding datadicts present:',
+            print ('No corresponding datadicts present:' +
                     'Please run tsetOptimizerLoop or autoTsetOptimization!')
             return None
         if os.path.isfile(mapfname):
@@ -506,7 +508,6 @@ class ChromaWalker:
             pd.to_pickle(self.edgedata, edfname)
         return self.edgedata
 
-
     def getGenomeEffectiveNetwork(self, bestmeansize=1.0, goodLevels=False):
         """
         Compute whole-genome effective interaction network, choosing
@@ -570,6 +571,8 @@ class ChromaWalker:
         network with the same bestmeansize has been computed already.
 
         Dumps node data to Cytoscape CSV and pandas Dataframe.
+
+        Note: Not implemented yet.
         """
         pass
 
@@ -590,8 +593,8 @@ if __name__ == '__main__':
     res = 50000
     cnamelist = ['chr21', 'chr22']
     betalist = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
-    norm='gfilter_2e5'
-    meansize = 1.5
+    norm = 'gfilter_2e5'
+    meansize = 1.0
     pars = {
             #'rawdatadir': '/home/tanzw/data/hicdata/ProcessedData/',
             #'genomedatadir': '/home/tanzw/data/genomedata/',
@@ -614,8 +617,8 @@ if __name__ == '__main__':
     epigenpars = {'epigendatadir': 'epigenomic-tracks'}
     cw = ChromaWalker(pars, epigenpars=epigenpars)
     cw.getAllFMCmats()
-    #cw.autoTsetOptimization()
-    cw.getGenomeEffectiveNetwork(bestmeansize=5.0, goodLevels=True)
+    cw.autoTsetOptimization()
+    cw.getGenomeEffectiveNetwork(bestmeansize=3.0, goodLevels=True)
     #print 'chrsizes:', cw.chrsizes
     #print 'goodlevels:', cw.goodntargets
     #print 'optimallevels:', cw.optimalntargets
