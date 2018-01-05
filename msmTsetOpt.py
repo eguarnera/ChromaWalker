@@ -1096,13 +1096,19 @@ class TargetOptimizer:
                 [], self.res)
 
     def plot_partitionHierarchy_optimal(self, ax, cname, beta, ntargetmax=None,
-                    rhomax=0.8, skipfirst=None):
+                    rhomax=0.8, skipfirst=None, optimal=True):
         """
         Plot hierarchy of partitions up to ntargetmax.
+        If optimal set to False, include all good ntarget values.
         """
         # Find true max ntarget
         rd, td = self.DFR.get_datadicts(cname)
-        ntlist = self.get_optimalLevels(cname, beta, ntargetmax=ntargetmax)
+        if optimal:
+            ntlist = self.get_optimalLevels(cname, beta, ntargetmax=ntargetmax)
+            optlist = []
+        else:
+            ntlist = self.get_goodLevels(cname, beta, ntargetmax=ntargetmax)
+            optlist = self.get_optimalLevels(cname, beta, ntargetmax=ntargetmax)
         limslist = []
         idslist = []
         clrlist = []
@@ -1116,7 +1122,7 @@ class TargetOptimizer:
             clrlist.append(clr)
         # Plot
         plu._plot_PartitionsHierarchy(ax, limslist, idslist, clrlist, ntlist,
-                [], self.res)
+                optlist, self.res)
 
     def get_binLaplacian(self, cname, beta, ntarget):
         """
@@ -1317,7 +1323,7 @@ if __name__ == '__main__':
     lab = TOpt.get_binLaplacian(cname, beta, 4)
     f, x = plt.subplots()
     x.matshow(lab)
-    lab = TOpt.get_binLaplacian_inter(cname2, cname, beta, 10, 10)
+    lab = TOpt.get_binLaplacian_inter(cname2, cname, beta, beta, 10, 10)
     f, x = plt.subplots()
     x.matshow(lab)
     _ = raw_input('Enter anything to exit:')

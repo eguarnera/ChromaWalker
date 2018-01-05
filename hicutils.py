@@ -4011,4 +4011,3 @@ def _extract_fij_subregion_LiebermannAiden2014(chrname,
     fmat += (nloop - 1.0) * np.diag(np.diag(fmat))
     # Return
     return fmat, (mapping, nbins)
-

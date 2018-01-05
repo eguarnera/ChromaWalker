@@ -734,7 +734,7 @@ def _plot_PartitionsHierarchy(ax, limslist, pieceidlist, tclist, ntlist,
     ax.set_yticks(ytickpos)
     ax.set_yticklabels(ntlist)
     ax.set_xlim(0, np.max(map(max, lims2)) * res / 1.0e6)
-    ax.set_ylim(0, len(ntlist) + np.sum(ntarget < np.array(levels)))
+    ax.set_ylim(0, len(ntlist) + np.sum(ntarget >= np.array(levels)))
 
 
 def _plot_hcluster_fill_hardp(hc, ax, mapping, res, shift, cmap=cm.Dark2):
@@ -1359,5 +1359,4 @@ def _plot_chromosomePartitions_donut(ax, sizes, pieceids, radius=2.0,
 
 #####################################################
 # Wrappers
-
 

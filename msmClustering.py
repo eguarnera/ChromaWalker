@@ -101,4 +101,3 @@ def _clustersplit_minprox(favg, cluster, hubs):
     sub1 = list(cl[favgsub[:, 0] <= favgsub[:, 1]])
     sub2 = list(cl[favgsub[:, 0] > favgsub[:, 1]])
     return minprox, (sub1, sub2)
-

@@ -547,7 +547,6 @@ def _get_TargetCommittor(datadir, tset, norm='raw'):
             'TargetCommittor-%s-%02i.dat' % (norm, tsetindex))
     if os.path.isfile(fname_TC):
         # Read file
-        print 'Load committor from file...'
         ntarget = len(tset)
         qAi = np.fromfile(fname_TC, 'float64')
         qAi.shape = ntarget, len(qAi) / ntarget
@@ -949,8 +948,81 @@ class DataFileReader:
             os.makedirs(binary_dir_beta1)
         # Test if binary file exists
         fmatfname = os.path.join(binary_dir, 'fmat-' + self.norm + '.dat')
+        #fmatrawbeta1fname = os.path.join(binary_dir_beta1, 'fmat-' +
+                        #'raw' + '.dat')
+        #maprawbeta1fname = os.path.join(binary_dir_beta1,
+                            #'mapping-' + 'raw' + '.dat')
         fmatbeta1fname = os.path.join(binary_dir_beta1, 'fmat-' +
                         self.norm + '.dat')
+        #fmatnormbeta1fname = os.path.join(binary_dir_beta1, 'fmat-' +
+                        #self.norm + '.dat')
+        #mapnormbeta1fname = os.path.join(binary_dir_beta1,
+                            #'mapping-' + self.norm + '.dat')
+        #baseresname = str(int(self.baseres / 1000)) + 'kb'
+        #hicfile = os.path.join(self.rawdatadir, self.accession,
+                    #self.runlabel,
+                    #baseresname + '_resolution_intrachromosomal',
+                    #cname, 'MAPQGE30', cname + '_' +
+                    #baseresname + '.RAWobserved')
+        #regionselection = self._get_regionselection(cname)
+        #if os.path.isfile(fmatfname):
+            ### Load binary file
+            #fmat = np.fromfile(fmatfname, 'float64')
+            #n = int(np.sqrt(len(fmat)))
+            #fmat.shape = n, n
+        #elif self.norm.startswith('gfilter'):
+            ### Check if rawbeta1 file exists
+            #if os.path.isfile(fmatrawbeta1fname):
+                ### Load rawbeta1 file
+                #fmat = np.fromfile(fmatrawbeta1fname, 'float64')
+                #n = int(np.sqrt(len(fmat)))
+                #fmat.shape = n, n
+            #else:
+                ### Read / create rawbeta1 file
+                #fmat, mappingdata = _extract_fij_subregion_LiebermannAiden2014(
+                    #cname, self.genomeref, self.genomedatadir, hicfile,
+                    #self.baseres, baseresname, self.res, regionselection,
+                    #nloop=self.nloop, norm='raw', minrowsum=self.minrowsum)
+                ### Dump rawbeta1 fmat and mappingdata
+                #fmat.tofile(fmatrawbeta1fname)
+                #hfio._pickle_securedump(maprawbeta1fname, mappingdata,
+                            #freed=True)
+            ### Exponentiate by beta
+            #fmat = fmat ** beta
+            ### Pad, apply gfilter, remove zero-rows (calculate mappingdata)
+            ####### TODO ######
+            ### Dump fmat and mappingdata
+            #fmat.tofile(fmatfname)
+            #hfio._pickle_securedump(mapfname, mappingdata, freed=True)
+            #pass
+        #else:
+            ### Check if rawbeta1 file exists
+            #if os.path.isfile(fmatnormbeta1fname):
+                ### Load normbeta1 file
+                #fmat = np.fromfile(fmatnormbeta1fname, 'float64')
+                #n = int(np.sqrt(len(fmat)))
+                #fmat.shape = n, n
+            #else:
+                ### Read / create normbeta1 file
+                #fmat, mappingdata = _extract_fij_subregion_LiebermannAiden2014(
+                    #cname, self.genomeref, self.genomedatadir, hicfile,
+                    #self.baseres, baseresname, self.res, regionselection,
+                    #nloop=self.nloop, norm=self.norm, minrowsum=self.minrowsum)
+                ### Dump normbeta1 fmat and mappingdata
+                #fmat.tofile(fmatnormbeta1fname)
+                #hfio._pickle_securedump(mapnormbeta1fname, mappingdata,
+                            #freed=True)
+            #if beta != 1.0:
+                ### Exponentiate by beta
+                #fmat = fmat ** beta
+                ### Copy normbeta1 mappingdata, dump fmat and mappingdata
+                #mappingdata = hfio._pickle_secureread(mapnormbeta1fname,
+                                #free=True)
+                #fmat.tofile(fmatfname)
+                #hfio._pickle_securedump(mapfname, mappingdata, freed=True)
+            #pass
+        ####################################
+        # Old version
         if os.path.isfile(fmatfname):
             ## If exist, read binary file
             fmat = np.fromfile(fmatfname, 'float64')

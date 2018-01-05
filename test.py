@@ -666,4 +666,3 @@ pars = {'genomedatadir': genomedatadir,
 
 test_get_allchrsizes(genomedatadir)
 test_get_cytoband(pars)
-
