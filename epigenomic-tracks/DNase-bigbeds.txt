@@ -1,0 +1,2 @@
+DNase	UWDuke GM12878	SignalAnalysis/DNase-Seq/wgEncodeUWDukeDnaseGM12878.fdr01peaks.hg19.bb
+

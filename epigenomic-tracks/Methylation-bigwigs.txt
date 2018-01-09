@@ -1,0 +1,2 @@
+WGBS	RoadmapE IMR90	SignalAnalysis/Methylation/E017_WGBS_FractionalMethylation.bigwig
+

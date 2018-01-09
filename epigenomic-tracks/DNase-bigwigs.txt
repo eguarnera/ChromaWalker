@@ -1,0 +1,3 @@
+DNase	OpenChrom GM12878	SignalAnalysis/DNase-Seq/wgEncodeOpenChromDnaseGm12878BaseOverlapSignal.bigWig
+FAIRE	OpenChrom GM12878	SignalAnalysis/DNase-Seq/wgEncodeOpenChromFaireGm12878BaseOverlapSignal.bigWig
+DNase	RoadmapE IMR90	SignalAnalysis/DNase-Seq/E017-DNase.fc.signal.bigwig
