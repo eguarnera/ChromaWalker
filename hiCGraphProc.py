@@ -1,5 +1,9 @@
+#!/usr/bin/env python
+"""
+Miscellaneous functions for Hi-C graph data analysis
 
-# Misc functions for Hi-C graph data processing
+Part of ChromaWalker package
+"""
 
 import numpy as np
 from scipy.stats import gmean

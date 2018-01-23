@@ -12,6 +12,7 @@ import sys
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from matplotlib.gridspec import GridSpec as gridspec
+from matplotlib import ticker
 import random
 import copy
 import multiprocessing
@@ -23,6 +24,8 @@ import hicFileIO as hfio
 import dataFileReader as dfr
 import msmTPT as mt
 import msmTsetOpt as mto
+import epigenHandler as eh
+import optimals
 
 
 ###############################
@@ -88,6 +91,30 @@ Warning: Whole-genome effective interaction matrix not the same size as
     datacols = ['Position1', 'Position2', 'Effective interaction', 'Affinity']
     edgedata = pd.DataFrame(datarows, columns=datacols)
     return edgedata
+
+
+def _get_bandstainDataframe(nodedata, cytobanddatadict, res):
+    """
+    Create pandas dataframe of G-stain composition of partitions.
+    In units of pixels (in cytobanddatadict).
+    """
+    stainlevels = [0.0, 1.0, 2.0, 3.0, 4.0, -1.0, 0.5, 0.25]
+    staincolors = ['gneg', 'gpos25', 'gpos50', 'gpos75', 'gpos100',
+                   'acen', 'gvar', 'stalk']
+    nd = nodedata.reset_index(drop=True)
+    nnodes = len(nd)
+    staind = {s: [] for s in stainlevels}
+    for i in range(nnodes):
+        cname, st, en = nd.ix[i][['chr', 'st', 'en']]
+        st /= res
+        en /= res
+        thiscband = cytobanddatadict[cname][0]
+        bandslice = thiscband[st:en]
+        for stain in stainlevels:
+            staind[stain].append(np.sum(np.abs(bandslice - stain) < 1.0e-6))
+    for stain, clr in zip(stainlevels, staincolors):
+        nd[clr] = staind[stain]
+    return nd
 
 
 def _get_fmcmatPlotFigAx(cytobanddata=None, colorbar=False):
@@ -256,6 +283,7 @@ class ChromaWalker:
         self.DFR= dfr.DataFileReader(pars, epigenpars=epigenpars)
         self.TOpt = mto.TargetOptimizer(pars, DFR=self.DFR,
                         conMCpars=conMCpars, pertpars=pertpars)
+        self.EH = eh.EpigenHandler(pars, epigenpars)
 
         # Basic file directory / name info
         self.rawdatadir = pars['rawdatadir']
@@ -366,6 +394,11 @@ class ChromaWalker:
         self.goodntargets = {c: None for c in self.cnamelist}
         self.optimalntargets = {c: None for c in self.cnamelist}
 
+        #############################
+        # Data placeholders
+        self.nodedata = None
+        self.edgedata = None
+
     def _get_bestBeta(self, cname, maxdisconnected=0.1):
         """
         Get highest integer beta (<= 9) such that less than fraction
@@ -378,12 +411,12 @@ class ChromaWalker:
             return self.bestbeta[cname]
         else:
             # Get beta=1.0 array size
-            fullsize = len(self.DFR.get_mmat(cname, 1.0))
+            fullsize = len(self.DFR.get_mappingdata(cname, 1.0)[0])
             # Test all other beta, starting from highest
             blist = np.sort(self.betalist)[::-1]
             for beta in blist:
                 print 'Testing beta = %i...' % beta
-                thissize = len(self.DFR.get_mmat(cname, beta))
+                thissize = len(self.DFR.get_mappingdata(cname, beta)[0])
                 if thissize >= (1.0 - maxdisconnected) * fullsize:
                     # This beta is good
                     self.bestbeta[cname] = beta
@@ -410,20 +443,20 @@ class ChromaWalker:
                         self.bestbeta[cname])
             # Get cytobands
             cytobanddata = self.DFR.get_bands(cname)
-            t = '%s, \\beta=%i: $\\log_{10}(f_{ij})$' % (cname,
+            t = '%s, $\\beta=%i$: $\\log_{10}(f_{ij})$' % (cname,
                             self.bestbeta[cname])
             f, x = _plot_fmat(fmat, mappingdata, self.res,
                     cytobanddata=cytobanddata, colorbar=True, title=t)
             plotfname = os.path.join(plotdir, 'fmat-%s.pdf' % cname)
             f.savefig(plotfname)
             plt.close(f)
-            t = '%s, \\beta=%i: $m_{ij}$' % (cname, self.bestbeta[cname])
+            t = '%s, $\\beta=%i$: $m_{ij}$' % (cname, self.bestbeta[cname])
             f, x = _plot_mmat(mmat, mappingdata, self.res,
                     cytobanddata=cytobanddata, colorbar=True, title=t)
             plotfname = os.path.join(plotdir, 'mmat-%s.pdf' % cname)
             f.savefig(plotfname)
             plt.close(f)
-            t = '%s, \\beta=%i: $c_{ij}$' % (cname, self.bestbeta[cname])
+            t = '%s, $\\beta=%i$: $c_{ij}$' % (cname, self.bestbeta[cname])
             f, x = _plot_cmat(cmat, mappingdata, self.res,
                     cytobanddata=cytobanddata, colorbar=True, title=t)
             plotfname = os.path.join(plotdir, 'cmat-%s.pdf' % cname)
@@ -549,7 +582,7 @@ class ChromaWalker:
             rlist, ntlist = self.TOpt._get_rholist(cname, beta)
             self.TOpt.plot_partitionHierarchy_optimal(axparts, cname, beta,
                         rhomax=self.rhomax, optimal=False)
-            plu._plot_cytobands(cytobanddata, res, axcytoh)
+            plu._plot_cytobands(cytobanddata, self.res, axcytoh)
             axparts.xaxis.set_visible(False)
             axparts.set_ylabel('$n$')
             axrho.plot(ntlist, rlist, '-o')
@@ -584,8 +617,8 @@ class ChromaWalker:
         print 'Automated targetset optimization...'
         print '***********************************'
         print
-        #for cname in self.cnamelist:
-            #self.tsetOptimizerLoop(cname)
+        for cname in self.cnamelist:
+            self.tsetOptimizerLoop(cname)
         print
         print 'Automated targetset optimization done!'
         print '***********************************'
@@ -704,17 +737,102 @@ class ChromaWalker:
         """
         # Test if pickled data already exists
         ndfname = os.path.join(self.casedir,
-                'nodedata-ms%0e-%s.pkl.gz' % (bestmeansize,
+                'nodedata-ms%.e-%s.pkl.gz' % (bestmeansize,
+                        'good' if goodLevels else 'optimal'))
+        ndcsv = os.path.join(self.casedir,
+                'nodedata-ms%.e-%s.csv' % (bestmeansize,
                         'good' if goodLevels else 'optimal'))
         if os.path.isfile(ndfname):
             print 'Reading node dataframe...'
             self.nodedata = pd.read_pickle(ndfname)
+            #raw_input('Reading nodeDF: ')
         else:
             # Call utility to create DataFrame
+            #raw_input('Trying to create nodeDF: ')
             self.nodedata = _get_nodeDataframe(self.cnamelist,
                         self.partitiondata, self.res)
             pd.to_pickle(self.nodedata, ndfname)
+            self.nodedata.to_csv(ndcsv, index=False)
         return self.nodedata
+
+    def get_nodeBandDataframe(self, bestmeansize=1.0, goodLevels=False):
+        """
+        Get pandas DataFrame of partition nodes, either from pickled file or
+        from targetset data.
+        """
+        # Test if pickled data already exists
+        ndfname = os.path.join(self.casedir,
+                'nodedata-bands-ms%.e-%s.pkl.gz' % (bestmeansize,
+                        'good' if goodLevels else 'optimal'))
+        ndcsv = os.path.join(self.casedir,
+                'nodedata-bands-ms%.e-%s.csv' % (bestmeansize,
+                        'good' if goodLevels else 'optimal'))
+        if os.path.isfile(ndfname):
+            print 'Reading node dataframe...'
+            self.nodebanddata = pd.read_pickle(ndfname)
+        else:
+            self.nodedata = self.get_nodeDataframe(bestmeansize=bestmeansize,
+                    goodLevels=goodLevels)
+            # Call utility to create DataFrame
+            cbanddatadict = {cname: self.DFR.get_bands(cname)
+                             for cname in self.cnamelist}
+            self.nodebanddata = _get_bandstainDataframe(self.nodedata,
+                            cbanddatadict, self.res)
+            pd.to_pickle(self.nodebanddata, ndfname)
+            self.nodebanddata.to_csv(ndcsv, index=False)
+        return self.nodebanddata
+
+    def get_nodeEpigenDataframe(self, bestmeansize=1.0, goodLevels=False):
+        """
+        Get pandas DataFrame of partition nodes (epigenetic signal data).
+        """
+        # Test if pickled data already exists
+        ndfname = os.path.join(self.casedir,
+                'nodedata-epigen-ms%.e-%s.pkl.gz' % (bestmeansize,
+                        'good' if goodLevels else 'optimal'))
+        ndcsv = os.path.join(self.casedir,
+                'nodedata-epigen-ms%.e-%s.csv' % (bestmeansize,
+                        'good' if goodLevels else 'optimal'))
+        if os.path.isfile(ndfname):
+            print 'Reading node epigen dataframe...'
+            self.nodeepigendata = pd.read_pickle(ndfname)
+        else:
+            self.nodedata = self.get_nodeDataframe(bestmeansize=bestmeansize,
+                    goodLevels=goodLevels)
+            # Call utility to create DataFrame
+            print
+            print 'Getting epigenetic track data from UCSC server...'
+            print 'This might take a while.'
+            print
+            self.nodeepigendata = self.EH.get_epigenPartitionDataFrame(
+                        self.nodedata, local=False)
+            pd.to_pickle(self.nodeepigendata, ndfname)
+            self.nodeepigendata.to_csv(ndcsv, index=False)
+        return self.nodeepigendata
+
+    def get_nodeEpigenDataframe_ZScore(self, bestmeansize=1.0,
+                    goodLevels=False):
+        """
+        Get pandas DataFrame of partition nodes (epigenetic signal Z-Scores).
+        """
+        # Test if pickled data already exists
+        ndfname = os.path.join(self.casedir,
+                'nodedata-epigenZ-ms%.e-%s.pkl.gz' % (bestmeansize,
+                        'good' if goodLevels else 'optimal'))
+        ndcsv = os.path.join(self.casedir,
+                'nodedata-epigenZ-ms%.e-%s.csv' % (bestmeansize,
+                        'good' if goodLevels else 'optimal'))
+        if os.path.isfile(ndfname):
+            print 'Reading node epigenZ dataframe...'
+            self.nodeepigenz = pd.read_pickle(ndfname)
+        else:
+            self.nodeepigendata = self.get_nodeEpigenDataframe(
+                        bestmeansize=bestmeansize, goodLevels=goodLevels)
+            self.nodeepigenz = self.EH.get_epigenPartitionDataFrame_ZScore(
+                        self.nodeepigendata)
+            pd.to_pickle(self.nodeepigenz, ndfname)
+            self.nodeepigenz.to_csv(ndcsv, index=False)
+        return self.nodeepigenz
 
     def get_edgeDataframe(self, bestmeansize=1.0, goodLevels=False):
         """
@@ -722,7 +840,10 @@ class ChromaWalker:
         from targetset data.
         """
         edfname = os.path.join(self.casedir,
-                'edgedata-ms%0e-%s.pkl.gz' % (bestmeansize,
+                'edgedata-ms%.e-%s.pkl.gz' % (bestmeansize,
+                        'good' if goodLevels else 'optimal'))
+        edcsv = os.path.join(self.casedir,
+                'edgedata-ms%.e-%s.csv' % (bestmeansize,
                         'good' if goodLevels else 'optimal'))
         if os.path.isfile(edfname):
             print 'Reading edge dataframe...'
@@ -756,6 +877,7 @@ class ChromaWalker:
             self.edgedata = _get_edgeDataframe(self.nodedata,
                         self.effInteraction, self.affinity)
             pd.to_pickle(self.edgedata, edfname)
+            self.edgedata.to_csv(edcsv, index=False)
         return self.edgedata
 
     def getGenomeEffectiveNetwork(self, bestmeansize=1.0, goodLevels=False):
@@ -782,12 +904,24 @@ class ChromaWalker:
         csizes = dfr._get_allchrsizes(self.cnamelist, self.genomeref,
                         self.genomedatadir)
         self.chrsizes = {cname: int(np.ceil(csizes[i] / self.res))
-                        for i, cname in enumerate(cnamelist)}
+                        for i, cname in enumerate(self.cnamelist)}
         #######################
         # Choose levels
         self.bestlevels = _find_bestFitLevels(self.chrsizes,
                     self.goodntargets if goodLevels else self.optimalntargets,
                     bestmeansize / self.res * 1.0e6)
+        #######################################################
+        #######################################################
+        # Intercept pipeline: Use selected levels defined in optimals
+        #print 'Best levels:', self.bestlevels
+        #key = self.accession, self.runlabel, False, self.norm
+        #self.bestlevels = {cname:
+            #optimals.bestbetant[key][cname][1][optimals.fullgenomelevels[key][cname]]
+            #for cname in self.cnamelist}
+        #print 'Best levels:', self.bestlevels
+        #_ = raw_input('...: ')
+        #######################################################
+        #######################################################
         #######################
         # Assign case index, and update case map file
         print
@@ -795,15 +929,24 @@ class ChromaWalker:
         print
         #######################
         # Define partitions: create nodes dataframe
-        self.partitiondata = [self.TOpt.get_partitions(cname,
-                self.bestbeta[cname], self.bestlevels[cname])
-                    for cname in cnamelist]
+        #self.partitiondata = [self.TOpt.get_partitions(cname,
+                #self.bestbeta[cname], self.bestlevels[cname])
+                    #for cname in self.cnamelist]
         _ = self.get_nodeDataframe(bestmeansize=bestmeansize,
                         goodLevels=goodLevels)
         print
         print 'Partition node data sample:'
         print
         print self.nodedata.head()
+        print
+        #######################
+        # Get node band dataframe
+        _ = self.get_nodeBandDataframe(bestmeansize=bestmeansize,
+                        goodLevels=goodLevels)
+        print
+        print 'Partition node bands data sample:'
+        print
+        print self.nodebanddata.head()
         print
         #######################
         # Get Laplacians: create edges dataframe
@@ -814,6 +957,27 @@ class ChromaWalker:
         print
         print self.edgedata.head()
         print
+        #######################
+        # Get epigen levels: create epigen dataframe
+        _ = self.get_nodeEpigenDataframe(bestmeansize=bestmeansize,
+                        goodLevels=goodLevels)
+        print
+        print 'Partition epigen data sample:'
+        print
+        print self.nodeepigendata[self.nodeepigendata.columns[:10]].head()
+        print
+        #######################
+        # Get epigen scores: create epigen scores dataframe
+        _ = self.get_nodeEpigenDataframe_ZScore(bestmeansize=bestmeansize,
+                        goodLevels=goodLevels)
+        print
+        print 'Partition epigenZ data sample:'
+        print
+        print self.nodeepigenz[self.nodeepigenz.columns[:10]].head()
+        print
+        #######################
+        # Plor effective interaction and affinity matrices
+        self._reportGenomeEffectiveNetwork()
 
     def _get_partitionNetworkMatrix_1chr(self, cname,
             edgecolumn='Effective interaction'):
@@ -906,20 +1070,34 @@ class ChromaWalker:
         nrows = len(nd_all)
         nd_all = nd_all.reset_index()
         mat = np.zeros((nbins, nbins))
-        for i in range(nrows):
-            pos1 = nd_all.ix[i]['Position']
-            mask11 = (ed_all['Position1'] == pos1)
-            for j in range(nrows):
-                pos2 = nd_all.ix[j]['Position']
-                mask21 = (ed_all['Position2'] == pos1)
-                mask22 = (ed_all['Position2'] == pos2)
-                mask12 = (ed_all['Position1'] == pos2)
-                if np.sum(mask11 & mask22) > 0:
-                    mat[binmap[i], binmap[j]] = list(ed_all[(mask11 & mask22)]
-                                [edgecolumn])[0]
-                else:
-                    mat[binmap[i], binmap[j]] = list(ed_all[(mask12 & mask21)]
-                                [edgecolumn])[0]
+        poslist = list(nd_all['Position'])
+        p1list = list(ed_all['Position1'])
+        p2list = list(ed_all['Position2'])
+        j1 = np.array([binmap[poslist.index(pos1)] for pos1 in p1list])
+        j2 = np.array([binmap[poslist.index(pos2)] for pos2 in p2list])
+        mat[j1, j2] = np.array(ed_all[edgecolumn])
+        mat += mat.T - np.diag(np.diag(mat))
+        #for i in range(len(ed_all)):
+            #pos1, pos2, val = ed_all.ix[i][['Position1', 'Position2',
+                            #edgecolumn]]
+            #j1 = poslist.index(pos1)
+            #j2 = poslist.index(pos2)
+            #mat[binmap[j1], binmap[j2]] = val
+            #mat[binmap[j2], binmap[j1]] = val
+        #for i in range(nrows):
+            #pos1 = nd_all.ix[i]['Position']
+            #mask11 = (ed_all['Position1'] == pos1)
+            #for j in range(nrows):
+                #pos2 = nd_all.ix[j]['Position']
+                #mask21 = (ed_all['Position2'] == pos1)
+                #mask22 = (ed_all['Position2'] == pos2)
+                #mask12 = (ed_all['Position1'] == pos2)
+                #if np.sum(mask11 & mask22) > 0:
+                    #mat[binmap[i], binmap[j]] = list(ed_all[(mask11 & mask22)]
+                                #[edgecolumn])[0]
+                #else:
+                    #mat[binmap[i], binmap[j]] = list(ed_all[(mask12 & mask21)]
+                                #[edgecolumn])[0]
         return bvals, chrmidpts, chrbounds, mat
 
     def _plot_effectiveInteraction_intra(self, cname, axis,
@@ -984,8 +1162,11 @@ class ChromaWalker:
             thisnorm = colors.LogNorm(vmin=vmin, vmax=vmax)
         else:
             thisnorm = None
+        cmap = plt.get_cmap('afmhot_r')
+        cmap.set_bad((0.5, 0.5, 0.5))
+        fabmat[fabmat == 0.0] = np.nan
         pcm = axis.pcolormesh(bvals, bvals, fabmat, norm=thisnorm,
-                       cmap='afmhot_r')
+                       cmap=cmap, vmin=0.0)
         for cb in chrbounds:
             axis.axhline(y=cb, lw=1.0, c='k')
             axis.axvline(x=cb, lw=1.0, c='k')
@@ -994,7 +1175,15 @@ class ChromaWalker:
         axis.set_yticks(chrmidpts)
         axis.set_yticklabels([c[3:] for c in cnamelist])
         if colorbar:
-            plt.colorbar(pcm, ax=axis)
+            #cb = plt.colorbar(pcm, ax=axis, format='%.0e')
+            def fmt(x, pos):
+                a, b = '{:.0e}'.format(x).split('e')
+                b = int(b)
+                return r'{0}e{1}'.format(a, b)
+            cb = plt.colorbar(pcm, ax=axis, format=ticker.FuncFormatter(fmt))
+            #tick_locator = ticker.MaxNLocator(nbins=6)
+            #cb.locator = tick_locator
+            #cb.update_ticks()
         axis.set_xlim(np.min(bvals), np.max(bvals))
         axis.set_ylim(np.max(bvals), np.min(bvals))
         axis.xaxis.tick_top()
@@ -1012,54 +1201,52 @@ class ChromaWalker:
                     edgecolumn='Affinity')
         aabmat[aabmat == 0.0] = np.nan
         # Draw pcolormesh
+        cmap = plt.get_cmap('bwr')
+        cmap.set_bad((0.5, 0.5, 0.5))
         pcm = axis.pcolormesh(bvals, bvals, aabmat,
-                        vmin=-1, vmax=1, cmap='bwr')
+                        vmin=-1, vmax=1, cmap=cmap)
         for cb in chrbounds:
-            axis.axhline(y=cb, lw=2.0, c='k')
-            axis.axvline(x=cb, lw=2.0, c='k')
+            axis.axhline(y=cb, lw=1.0, c='k')
+            axis.axvline(x=cb, lw=1.0, c='k')
         axis.set_xticks(chrmidpts)
         axis.set_xticklabels([c[3:] for c in cnamelist])
         axis.set_yticks(chrmidpts)
         axis.set_yticklabels([c[3:] for c in cnamelist])
         if colorbar:
-            plt.colorbar(pcm, ax=axis)
+            cb = plt.colorbar(pcm, ax=axis, format='%i')
+            cb.set_ticks([-1, 1])
         axis.set_xlim(np.min(bvals), np.max(bvals))
         axis.set_ylim(np.max(bvals), np.min(bvals))
         axis.xaxis.tick_top()
         axis.set_aspect(1)
 
-    def reportGenomeEffectiveNetwork(self):
+    def _reportGenomeEffectiveNetwork(self):
         """
         Generate plots of effective interaction / affinity data.
         """
-        f = plt.figure(figsize=(10, 8))
-        gs = gridspec(1, 2, width_ratios=[1, 0.04])
-        ax1 = f.add_subplot(gs[0])
-        ax2 = f.add_subplot(gs[1])
-        x = [ax1, ax2]
-        self._plot_effectiveInteraction_intra('chr21', x,
-                    norm=True, colorbar=True, diagOn=False,
-                    scale='log', n=0.2)
+        plotdir = os.path.join(self.reportdir, 'current', 'WholeGenome')
+        if not os.path.isdir(plotdir):
+            os.makedirs(plotdir)
         f, x = plt.subplots(1, 1, figsize=(10, 8))
         self._plot_effectiveInteraction_inter(self.cnamelist, x,
                     norm=True, colorbar=True, diagOn=False,
-                    scale='log', n=0.2)
+                    scale='pow', n=0.2)
+        #f.suptitle('Whole-genome normalized effective interactions',
+                    #fontsize=14)
+        x.tick_params(axis='both', which='major', labelsize=6)
+        fname = os.path.join(plotdir, 'EffectiveInteractions.pdf')
+        f.savefig(fname)
+        plt.close(f)
         f, x = plt.subplots(1, 1, figsize=(10, 8))
-        self._plot_affinity_inter(self.cnamelist, x,
-                    colorbar=True)
-        #self._get_partitionNetworkMatrix_Nchr(self.cnamelist,
-            #edgecolumn='Effective interaction')
-
-    def epigenGenomeEffectiveNetwork(self, bestmeansize=None):
-        """
-        Compute epigenetic data on partition network. Assumes that the
-        network with the same bestmeansize has been computed already.
-
-        Dumps node data to Cytoscape CSV and pandas Dataframe.
-
-        Note: Not implemented yet.
-        """
-        pass
+        self._plot_affinity_inter(self.cnamelist, x, colorbar=True)
+        #f.suptitle('Whole-genome affinity', fontsize=14)
+        x.tick_params(axis='both', which='major', labelsize=6)
+        fname = os.path.join(plotdir, 'Affinity.pdf')
+        f.savefig(fname)
+        plt.close(f)
+        print 'Check plots in directory %s !' % plotdir
+        print
+        _ = raw_input('Enter anything to continue: ')
 
 
 #######################################################################
@@ -1068,19 +1255,30 @@ class ChromaWalker:
 if __name__ == '__main__':
     ################################
     # Perform tests on class functions
-    plt.ion()
+    #plt.ion()
     print
     print '**********************************************'
     print 'Welcome to ChromaWalker test suite!'
     print '**********************************************'
     print
-    baseres = 50000
-    res = 50000
+    baseres = 500000
+    res = 4000000
     cnamelist = ['chr21', 'chr22']
+    cnamelist = ['chr%i' % i for i in range(1, 23)] + ['chrX']
     betalist = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
-    norm = 'gfilter_2e5'
-    meansize = 1.0
+    norm = 'raw'
+    meansize = 5.0
     rhomax = 0.8
+    datalist = [
+                {'signal': 'CTCF',          'eptype': 'TFBS',
+                 'source': 'SYDH',          'trtype': 'signal'},
+                {'signal': 'H3K27Ac',       'eptype': 'Histone',
+                 'source': 'Broad',         'trtype': 'signal'},
+                {'signal': 'H3K27Me3_2',    'eptype': 'Histone',
+                 'source': 'Broad',         'trtype': 'signal'},
+                {'signal': 'DNase',         'eptype': 'DNase',
+                 'source': 'OpenChrom',     'trtype': 'signal'}
+                ]
     pars = {
             'rawdatadir': '/home/tanzw/data/hicdata/ProcessedData/',
             #'genomedatadir': '/home/tanzw/data/genomedata/',
@@ -1101,23 +1299,31 @@ if __name__ == '__main__':
             'betalist': betalist,
             'rhomax': rhomax
             }
-    epigenpars = {'epigendatadir': 'epigenomic-tracks'}
+    epigenpars = {
+                  #'epigendatadir': 'epigen',                # Sample local files
+                  'epigendatadir': 'epigenomic-tracks',
+                  'cellLine': 'GM12878',
+                  'binsize': res,
+                  'datalist': datalist
+                 }
+    ############################################
     ### Create CW instance
     cw = ChromaWalker(pars, epigenpars=epigenpars)
+    ############################################
     ### Convert interaction matrices to binary files, and compute MFPT
     ###  and hitting probability matrices
     cw.getAllFMCmats()
+    ############################################
     ### Automated targetset optimization
     ###  For more user control, use method tsetOptimizerLoop
-    cw.autoTsetOptimization()
+    #cw.autoTsetOptimization()
+    ############################################
     ### Define effective interaction network by choosing good/optimal levels
     ###  such that average partition size is closest to bestmeansize (in Mbp).
     ###  See docs for more details.
     #cw.getGenomeEffectiveNetwork(bestmeansize=5.0, goodLevels=True)
-    #cw.reportGenomeEffectiveNetwork()
-    _ = raw_input('Enter anything to exit: ')
-    #print 'chrsizes:', cw.chrsizes
-    #print 'goodlevels:', cw.goodntargets
-    #print 'optimallevels:', cw.optimalntargets
-    #print 'bestlevels:', cw.bestlevels
+    _ = raw_input('Run completed. Enter anything to exit: ')
+    print
+    print 'Farewell!'
+    print
 

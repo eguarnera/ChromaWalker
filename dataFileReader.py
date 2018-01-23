@@ -793,6 +793,8 @@ class DataFileReader:
     simplify function calls, for data retrieval / dumping.
     In some instances, a wrapper to interface with legacy code that
         I'm too lazy to modify.
+    Note: Methods for extracting epigenetic data tracks "outsourced" to
+          EpigenHandler.
     """
     def __init__(self, pars, epigenpars=None):
         """
@@ -812,34 +814,43 @@ class DataFileReader:
             'epigendatadir': Location for epigenetic track data (bigWigs)
         """
         # Basic file directory / name info
-        self.rawdatadir = pars['rawdatadir']
-        self.genomedatadir = pars['genomedatadir']
-        self.genomeref = pars['genomeref']
-        self.rundir = pars['rundir']
-        self.dataformat = 'Liebermann-Aiden'
-        self.accession = pars['accession']
-        self.runlabel = pars['runlabel']
-        self.tsetdatadir = pars['tsetdatadir']
-        self.tsetdataprefix = pars['tsetdataprefix']
+        self.rawdatadir = pars['rawdatadir']                # Input Hi-C data
+        self.rundir = pars['rundir']                        # Where to store processing output
+        self.accession = pars['accession']                  # Accession number for input data
+        self.runlabel = pars['runlabel']                    # Label associated with Hi-C run
+        self.baseres = pars['baseres']                      # Resolution of input Hi-C data
+            # Path for input Hi-C data:
+            #  Chromosome 20, intra-chromosomal at 50kb (reads with MAPQ >= 30)
+            #  rawdatadir/accession/runlabel/chr20/MAPQGE30/chr20_50kb.RAWobserved
+            #  Chromosome 20 + 22, inter-chromosomal at 1Mb (MAPQ >= 30)
+            #  rawdatadir/accession/runlabel/chr20_chr22/MAPQGE30/chr20_22_1mb.RAWobserved
+        self.dataformat = 'Liebermann-Aiden'                # Format for input Hi-C data
+                                                            # This format consists of binned data, in (x, y, val) format
+        self.genomedatadir = pars['genomedatadir']          # Cytoband, chromosome length data
+        self.genomeref = pars['genomeref']                  # hg19? hg38? etc.
+        self.tsetdatadir = pars['tsetdatadir']              # Where to store hub set optimization data
+        self.tsetdataprefix = pars['tsetdataprefix']        # Label for optimization method used
 
         #############################
         # Info about dataset / run:
         ## Which genomic regions?
         if 'cnamelist' in pars:
-            self.cnamelist = pars['cnamelist']
+            self.cnamelist = pars['cnamelist']              # List of chromosomes to analyze
             self.cname = self.cnamelist[0]
         else:
             self.cnamelist = ['chr' + str(i) for i in range(1, 23)] + ['chrX']
             self.cname = 'chr1'
-        self.region = pars.get('region', 'full')
+        self.region = pars.get('region', 'full')            # By default, for each chromosome, look at the full chromosome,
+                                                            # as opposed to zooming into a subdomain.
+                                                            # (FUTURE WORK) When adapting to "partitioning of partitions", may use this
+                                                            # parameter to specify.
         ## Data resolution?
-        self.baseres = pars['baseres']
-        self.res = pars.get('res', self.baseres)
+        self.res = pars.get('res', self.baseres)            # Resolution of interaction matrix
         ## Include self-interactions (loops)? How many times?
         self.nloop = pars.get('nloop', 0)
         ## Noise-filtering by thermal annealing
         if 'betalist' in pars:
-            self.betalist = pars['betalist']
+            self.betalist = pars['betalist']                # List of beta values to try
         else:
             self.betalist = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
         self.beta = pars.get('beta', self.betalist[0])
@@ -851,7 +862,7 @@ class DataFileReader:
         ## Noise filtering by filtering out low-count columns
         ###    To deprecate
         self.minrowsum = pars.get('minrowsum', 0.0)
-        ## TPT optimizer function: Whoch rho to use?
+        ## TPT optimizer function: What metastability index rho to use? See msmTPT.py
         ###    To deprecate
         self.rhomode = pars.get('rhomode', 'frac')
 
@@ -948,81 +959,8 @@ class DataFileReader:
             os.makedirs(binary_dir_beta1)
         # Test if binary file exists
         fmatfname = os.path.join(binary_dir, 'fmat-' + self.norm + '.dat')
-        #fmatrawbeta1fname = os.path.join(binary_dir_beta1, 'fmat-' +
-                        #'raw' + '.dat')
-        #maprawbeta1fname = os.path.join(binary_dir_beta1,
-                            #'mapping-' + 'raw' + '.dat')
         fmatbeta1fname = os.path.join(binary_dir_beta1, 'fmat-' +
                         self.norm + '.dat')
-        #fmatnormbeta1fname = os.path.join(binary_dir_beta1, 'fmat-' +
-                        #self.norm + '.dat')
-        #mapnormbeta1fname = os.path.join(binary_dir_beta1,
-                            #'mapping-' + self.norm + '.dat')
-        #baseresname = str(int(self.baseres / 1000)) + 'kb'
-        #hicfile = os.path.join(self.rawdatadir, self.accession,
-                    #self.runlabel,
-                    #baseresname + '_resolution_intrachromosomal',
-                    #cname, 'MAPQGE30', cname + '_' +
-                    #baseresname + '.RAWobserved')
-        #regionselection = self._get_regionselection(cname)
-        #if os.path.isfile(fmatfname):
-            ### Load binary file
-            #fmat = np.fromfile(fmatfname, 'float64')
-            #n = int(np.sqrt(len(fmat)))
-            #fmat.shape = n, n
-        #elif self.norm.startswith('gfilter'):
-            ### Check if rawbeta1 file exists
-            #if os.path.isfile(fmatrawbeta1fname):
-                ### Load rawbeta1 file
-                #fmat = np.fromfile(fmatrawbeta1fname, 'float64')
-                #n = int(np.sqrt(len(fmat)))
-                #fmat.shape = n, n
-            #else:
-                ### Read / create rawbeta1 file
-                #fmat, mappingdata = _extract_fij_subregion_LiebermannAiden2014(
-                    #cname, self.genomeref, self.genomedatadir, hicfile,
-                    #self.baseres, baseresname, self.res, regionselection,
-                    #nloop=self.nloop, norm='raw', minrowsum=self.minrowsum)
-                ### Dump rawbeta1 fmat and mappingdata
-                #fmat.tofile(fmatrawbeta1fname)
-                #hfio._pickle_securedump(maprawbeta1fname, mappingdata,
-                            #freed=True)
-            ### Exponentiate by beta
-            #fmat = fmat ** beta
-            ### Pad, apply gfilter, remove zero-rows (calculate mappingdata)
-            ####### TODO ######
-            ### Dump fmat and mappingdata
-            #fmat.tofile(fmatfname)
-            #hfio._pickle_securedump(mapfname, mappingdata, freed=True)
-            #pass
-        #else:
-            ### Check if rawbeta1 file exists
-            #if os.path.isfile(fmatnormbeta1fname):
-                ### Load normbeta1 file
-                #fmat = np.fromfile(fmatnormbeta1fname, 'float64')
-                #n = int(np.sqrt(len(fmat)))
-                #fmat.shape = n, n
-            #else:
-                ### Read / create normbeta1 file
-                #fmat, mappingdata = _extract_fij_subregion_LiebermannAiden2014(
-                    #cname, self.genomeref, self.genomedatadir, hicfile,
-                    #self.baseres, baseresname, self.res, regionselection,
-                    #nloop=self.nloop, norm=self.norm, minrowsum=self.minrowsum)
-                ### Dump normbeta1 fmat and mappingdata
-                #fmat.tofile(fmatnormbeta1fname)
-                #hfio._pickle_securedump(mapnormbeta1fname, mappingdata,
-                            #freed=True)
-            #if beta != 1.0:
-                ### Exponentiate by beta
-                #fmat = fmat ** beta
-                ### Copy normbeta1 mappingdata, dump fmat and mappingdata
-                #mappingdata = hfio._pickle_secureread(mapnormbeta1fname,
-                                #free=True)
-                #fmat.tofile(fmatfname)
-                #hfio._pickle_securedump(mapfname, mappingdata, freed=True)
-            #pass
-        ####################################
-        # Old version
         if os.path.isfile(fmatfname):
             ## If exist, read binary file
             fmat = np.fromfile(fmatfname, 'float64')
@@ -1213,6 +1151,9 @@ class DataFileReader:
                     cname1, cname2, self.genomeref, self.genomedatadir,
                     hicfile12, self.baseres, baseresname, self.res,
                     regionselection1, regionselection2)
+            ########################
+            # Note: Since we're not using inter-chromosomal data for
+            #       partitioning, we don't need to use gfilter here.
             #if self.norm.startswith('gfilter'):
                 ## Extract filter rad, sigma
                 #sigma = float(self.norm.split('_')[1])
@@ -1296,18 +1237,24 @@ if __name__ == '__main__':
     pars = {
             #'rawdatadir': '/home/tanzw/data/hicdata/ProcessedData/',
             #'genomedatadir': '/home/tanzw/data/genomedata/',
-            'rawdatadir': 'asciidata/',
-            'genomedatadir': 'asciidata/',
-            'genomeref': 'hg19',
-            'rundir': 'rundata/',
-            'accession': 'GSE63525',
-            'runlabel': 'GM12878_primary',
-            'tsetdatadir': 'rundata/TargetsetOptimization/',
-            'tsetdataprefix': 'Full-ConstructMC',
-            'baseres': baseres,
-            'res': res}
+            'rawdatadir': 'asciidata/',                            # Input Hi-C data
+            'genomedatadir': 'asciidata/',                         # Cytoband, chromosome length data
+            'genomeref': 'hg19',                                   # hg19? hg38? etc.
+            'rundir': 'rundata/',                                  # Where to store processing output
+            'accession': 'GSE63525',                               # Accession number for input data
+            'runlabel': 'GM12878_primary',                         # Label associated with Hi-C run
+            'tsetdatadir': 'rundata/TargetsetOptimization/',       # Where to store hub set optimization data
+            'tsetdataprefix': 'Full-ConstructMC',                  # Label for optimization method used
+            'baseres': baseres,                                    # Resolution of input Hi-C data
+            'res': res                                             # Resolution of interaction matrix
+            }
+        # Path for input Hi-C data:
+        #  Chromosome 20, intra-chromosomal at 50kb (reads with MAPQ >= 30)
+        #  rawdatadir/accession/runlabel/chr20/MAPQGE30/chr20_50kb.RAWobserved
+        #  Chromosome 20 + 22, inter-chromosomal at 1Mb (MAPQ >= 30)
+        #  rawdatadir/accession/runlabel/chr20_chr22/MAPQGE30/chr20_22_1mb.RAWobserved
     epigenpars = {'epigendatadir': 'epigenomic-tracks'}
-    print 'Create RDF object...'
+    print 'Create DFR object...'
     dfr = DataFileReader(pars, epigenpars=epigenpars)
     # Get cytoband data
     print 'Getting cytoband data...'

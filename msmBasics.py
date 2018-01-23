@@ -7,7 +7,8 @@ Part of ChromaWalker package
 
 
 import numpy as np
-from numpy.linalg import solve
+import sys
+from numpy.linalg import solve, cond
 from numpy.linalg import eigvals as eigvalsnp
 
 
@@ -117,7 +118,11 @@ def _calc_MFPT_20160831(fmat, mapping):
         ## Temp pmat
         pmatt = pmat.copy()
         pmatt[:, j] = 0.0
-        mmat[:, j] = solve(pmatt - np.eye(nbins), -np.ones(nbins))
+        try:
+            mmat[:, j] = solve(pmatt - np.eye(nbins), -np.ones(nbins))
+        except:
+            # Singular mmat, set values to dummy
+            return np.array([[0.0]]), np.array([[0.0]]), (np.array([0]), 1)
         if np.sum(mmat[:, j] < 0.0) > 0:
             badloci.append(j)
     if len(badloci) > 0:
