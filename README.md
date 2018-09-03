@@ -16,24 +16,24 @@ List of required Python libraries (versions):
 * Numpy (1.14)
 * Scipy (1.0)
 * Pandas (0.22)
+* Matplotlib (2.0)
 
 ### Installing
 
-A step by step series of examples that tell you have to get a development env running
+1. Install the SciPy stack
 
-Say what the step will be
-
-```
-Give the example
-```
-
-And repeat
+The most convenient way is to use pip:
 
 ```
-until finished
+python -m pip install --user numpy scipy matplotlib pandas
 ```
 
-End with an example of getting some data out of the system or using it for a little demo
+2. Copy package source to Python path
+3. Basic usage of the package can be inferred by looking at the code that's run when you execute ChromaWalker.py as a main program. In other words, look at how the program is run in ChromaWalker.py, under the conditional statement:
+
+```
+if __name__ == “__main__”:
+```
 
 ## Running the tests
 
