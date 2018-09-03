@@ -1,6 +1,8 @@
 # Project Title
 
-One Paragraph of project description goes here
+A Python package for exploring chromatin architecture through a random walk (Markov State Model) analysis of Hi-C data.
+
+** NOTE: This readme is under construction. **
 
 ## Getting Started
 
@@ -11,9 +13,9 @@ These instructions will get you a copy of the project up and running on your loc
 This library is built for Python 2.7.
 
 List of required Python libraries (versions):
-* Numpy ()
-* Scipy ()
-* Pandas ()
+* Numpy (1.14)
+* Scipy (1.0)
+* Pandas (0.22)
 
 ### Installing
 
