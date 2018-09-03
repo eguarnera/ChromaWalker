@@ -32,7 +32,7 @@ python -m pip install --user numpy scipy matplotlib pandas
 3. Basic usage of the package can be inferred by looking at the code that's run when you execute ChromaWalker.py as a main program. In other words, look at how the program is run in ChromaWalker.py, under the conditional statement:
 
 ```
-if __name__ == ‚Äú__main__‚Äù:
+if __name__ == ì__main__î:
 ```
 
 ## Running the tests
@@ -69,7 +69,7 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 
 ## Authors
 
-* **Zhen Wah Tan** - *Initial work* - [PurpleBooth](https://bitbucket.org/ZhenWahTan/)
+* **Zhen Wah Tan** - *Initial work* - [ZhenWahTan](https://bitbucket.org/ZhenWahTan/)
 
 See also the list of [contributors](https://bitbucket.org/ZhenWahTan/chromawalker/contributors) who participated in this project.
 
